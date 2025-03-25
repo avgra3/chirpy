@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
 )
 
@@ -20,8 +21,8 @@ func main() {
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInt(app))
 
 	// Handle hits to the file server
-	serverMux.HandleFunc("GET /api/metrics", apiCfg.hitCounter)
-	serverMux.HandleFunc("POST /api/reset", apiCfg.restCounter)
+	serverMux.HandleFunc("GET /admin/metrics", apiCfg.adminHandler)
+	serverMux.HandleFunc("POST /admin/reset", apiCfg.restCounter)
 
 	server := http.Server{
 		Handler: serverMux,
@@ -73,6 +74,25 @@ func (cfg *apiConfig) restCounter(respWriter http.ResponseWriter, req *http.Requ
 	hitCounterAfter := fmt.Sprintf("Hits (before reset): %v", cfg.fileserverHits.Load())
 	hitCounter := hitCounterBefore + "\n" + hitCounterAfter
 	respWriter.Write([]byte(hitCounter))
+}
+
+// Want a handler to get the admin page
+func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Request) {
+	// Set content-type
+	req.Header.Add("Content-Type", "text/html")
+	// Set the body
+	file, err := os.ReadFile("./admin/metrics.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileString := string(file)
+	//cfg.fileserverHits.Load()
+	updatedFileString := fmt.Sprintf(fileString, cfg.fileserverHits.Load())
+	// req.Body.Read([]byte(updatedFileString))
+	// Write status code
+	respWriter.WriteHeader(200)
+	// Write the body
+	respWriter.Write([]byte(updatedFileString))
 }
 
 // Types
