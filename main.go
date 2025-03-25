@@ -10,7 +10,7 @@ import (
 func main() {
 	serverMux := http.NewServeMux()
 	// Setting up our readiness endpoint
-	serverMux.HandleFunc("/healthz", readiness)
+	serverMux.HandleFunc("GET /api/healthz", readiness)
 
 	// Handle that adds a file server.
 	// Fileserver uses the http.Dir to map the
@@ -20,8 +20,8 @@ func main() {
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInt(app))
 
 	// Handle hits to the file server
-	serverMux.HandleFunc("/metrics", apiCfg.hitCounter)
-	serverMux.HandleFunc("/reset", apiCfg.restCounter)
+	serverMux.HandleFunc("GET /api/metrics", apiCfg.hitCounter)
+	serverMux.HandleFunc("POST /api/reset", apiCfg.restCounter)
 
 	server := http.Server{
 		Handler: serverMux,
