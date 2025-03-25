@@ -1,2 +1,5 @@
 # Exclude the build
 bin/*
+
+# Exclude test http requests
+httpRequests/*

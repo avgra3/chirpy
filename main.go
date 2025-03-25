@@ -1,11 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"sync/atomic"
 )
 
 func main() {
@@ -23,6 +20,7 @@ func main() {
 	// Handle hits to the file server
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.adminHandler)
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.restCounter)
+	serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
 
 	server := http.Server{
 		Handler: serverMux,
@@ -31,82 +29,4 @@ func main() {
 	log.Printf("Running server on port: %v", server.Addr)
 	server.ListenAndServe()
 
-}
-
-// Handlers
-// Want the readiness endpoint to be accessible at /healthz using any HTTP method
-// Should return: 200 OK status code
-// Header => Content-Type: text/plain; charset=utf-8
-// Body => OK
-// Later the endpoint can be enhanced to return 403 Service Unavailable status code
-// if the server is not ready
-func readiness(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	respWriter.Write([]byte("OK"))
-}
-
-// Want a handler that writes the number of requests that have been counted as plain text in this format to the HTTP response:
-// Hits: x
-func (cfg *apiConfig) hitCounter(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	hitCounter := fmt.Sprintf("Hits: %v", cfg.fileserverHits.Load())
-	respWriter.Write([]byte(hitCounter))
-}
-
-// Want a handler to reset the counter
-func (cfg *apiConfig) restCounter(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	hitCounterBefore := fmt.Sprintf("Hits (before reset): %v", cfg.fileserverHits.Load())
-	// Resets back to zero
-	cfg.fileserverHits.Store(0)
-	hitCounterAfter := fmt.Sprintf("Hits (before reset): %v", cfg.fileserverHits.Load())
-	hitCounter := hitCounterBefore + "\n" + hitCounterAfter
-	respWriter.Write([]byte(hitCounter))
-}
-
-// Want a handler to get the admin page
-func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/html")
-	// Set the body
-	file, err := os.ReadFile("./admin/metrics.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fileString := string(file)
-	//cfg.fileserverHits.Load()
-	updatedFileString := fmt.Sprintf(fileString, cfg.fileserverHits.Load())
-	// req.Body.Read([]byte(updatedFileString))
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	respWriter.Write([]byte(updatedFileString))
-}
-
-// Types
-type apiConfig struct {
-	// Allows us to safely increment an integer across goroutines
-	fileserverHits atomic.Int32
-}
-
-// Middleware
-func (cfg *apiConfig) middlewareMetricsInt(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Increments the filerserverHits counter ever time it's called.
-		cfg.fileserverHits.Add(1)
-		// Call the next handler
-		next.ServeHTTP(w, r)
-	})
 }
