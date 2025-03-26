@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 // Handlers
@@ -85,9 +86,13 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// type returnValue struct {
+	// 	Valid bool   `json:"valid"`
+	// 	Error string `json:"error"`
+	// }
 	type returnValue struct {
-		Valid bool   `json:"valid"`
-		Error string `json:"error"`
+		CleanedBody string `json:"cleaned_body"`
+		Error       string `json:"error"`
 	}
 
 	returnVal := returnValue{}
@@ -104,7 +109,8 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 		w.Write(dat)
 		return
 	}
-	returnVal.Valid = true
+	// returnVal.Valid = true
+	returnVal.CleanedBody = cleanWords(params.Body)
 	dat, err := json.Marshal(returnVal)
 	if err != nil {
 		w.WriteHeader(500)
@@ -114,4 +120,22 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 	w.Write(dat)
 	return
 
+}
+
+// Helper function(s)
+func cleanWords(input string) string {
+	splitInput := strings.Split(input, " ")
+	badWords := []string{"kerfuffle", "sharbert", "fornax"}
+	cleanedInput := []string{}
+	for _, word := range splitInput {
+		cleanedWord := word
+		for _, badWord := range badWords {
+			if strings.ToUpper(cleanedWord) == strings.ToUpper(badWord) {
+				cleanedWord = "****"
+			}
+		}
+		cleanedInput = append(cleanedInput, cleanedWord)
+
+	}
+	return strings.Join(cleanedInput, " ")
 }
