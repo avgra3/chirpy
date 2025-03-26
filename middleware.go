@@ -13,6 +13,8 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	// For connecting to our database
 	dbQuerries *database.Queries
+	// Platform
+	platform string
 }
 
 // Middleware

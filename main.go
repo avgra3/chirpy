@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/avgra3/chirpy/internal/database"
+	"github.com/google/uuid"
 	_ "github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -15,6 +17,7 @@ import (
 func main() {
 	// Getting .env
 	godotenv.Load()
+	currentPlatform := os.Getenv("PLATFORM")
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -32,14 +35,16 @@ func main() {
 	// current directory to http address.
 	apiCfg := apiConfig{
 		dbQuerries: dbQuerries,
+		platform:   currentPlatform,
 	}
 	app := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInt(app))
 
 	// Handle hits to the file server
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.adminHandler)
-	serverMux.HandleFunc("POST /admin/reset", apiCfg.restCounter)
+	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetCounter)
 	serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
+	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandler)
 
 	server := http.Server{
 		Handler: serverMux,
@@ -48,4 +53,11 @@ func main() {
 	log.Printf("Running server on port: %v", server.Addr)
 	server.ListenAndServe()
 
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }

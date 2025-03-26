@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,65 @@ import (
 )
 
 // Handlers
+// Adding a new user
+func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.Request) {
+	// Takes in JSON request like:
+	// {
+	//   "email": "user@example.com"
+	// }
+	type parameters struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		respWriter.WriteHeader(500)
+		return
+	}
+	if strings.Trim(params.Email, " ") == "" {
+		log.Printf("Error: Empty email field\n")
+		log.Printf("Error: email field => %v\n", params.Email)
+		respWriter.WriteHeader(400)
+		return
+	}
+
+	// Responds with HTTP 201 Created
+	// {
+	//   "id": "50746277-23c6-4d85-a890-564c0044c2fb",
+	//   "created_at": "2021-07-07T00:00:00Z",
+	//   "updated_at": "2021-07-07T00:00:00Z",
+	//   "email": "user@example.com"
+	// }
+
+	// Need to actually make the user:
+	ctx := context.Background()
+	newUser, err := cfg.dbQuerries.CreateUser(ctx, params.Email)
+	if err != nil {
+		respWriter.WriteHeader(500)
+		log.Printf("Error: %v\n", err)
+		return
+	}
+	ourUser := User{
+		ID:        newUser.ID,
+		CreatedAt: newUser.CreatedAt,
+		UpdatedAt: newUser.UpdatedAt,
+		Email:     newUser.Email,
+	}
+	dat, err := json.Marshal(ourUser)
+	if err != nil {
+		respWriter.WriteHeader(500)
+		log.Printf("Error: %v\n", err)
+		return
+	}
+	respWriter.WriteHeader(201)
+	respWriter.Header().Set("Content-Type", "application/json")
+	respWriter.Write(dat)
+	return
+}
+
 // Want the readiness endpoint to be accessible at /healthz using any HTTP method
 // Should return: 200 OK status code
 // Header => Content-Type: text/plain; charset=utf-8
@@ -38,7 +98,20 @@ func (cfg *apiConfig) hitCounter(respWriter http.ResponseWriter, req *http.Reque
 }
 
 // Want a handler to reset the counter
-func (cfg *apiConfig) restCounter(respWriter http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) resetCounter(respWriter http.ResponseWriter, req *http.Request) {
+	// Check platform
+	if cfg.platform != "dev" {
+		respWriter.WriteHeader(403)
+		return
+	}
+	// Delete all users in the database
+	ctx := context.Background()
+	err := cfg.dbQuerries.DeleteAllUsers(ctx)
+	if err != nil {
+		respWriter.WriteHeader(500)
+		return
+	}
+
 	// Set content-type
 	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
 	// Write status code
