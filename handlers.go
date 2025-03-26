@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -21,18 +22,21 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		Email string `json:"email"`
 	}
 
-	decoder := json.NewDecoder(req.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
+	defer req.Body.Close()
+
+	data, err := io.ReadAll(req.Body)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		respWriter.WriteHeader(500)
+		respondWithError(respWriter, 500, "couldn't read request")
+		return
+	}
+	params := parameters{}
+	err = json.Unmarshal(data, &params)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't unmarshal parameters")
 		return
 	}
 	if strings.Trim(params.Email, " ") == "" {
-		log.Printf("Error: Empty email field\n")
-		log.Printf("Error: email field => %v\n", params.Email)
-		respWriter.WriteHeader(400)
+		respondWithError(respWriter, 400, "entered email was invalid (empty string)")
 		return
 	}
 
@@ -58,15 +62,7 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		UpdatedAt: newUser.UpdatedAt,
 		Email:     newUser.Email,
 	}
-	dat, err := json.Marshal(ourUser)
-	if err != nil {
-		respWriter.WriteHeader(500)
-		log.Printf("Error: %v\n", err)
-		return
-	}
-	respWriter.WriteHeader(201)
-	respWriter.Header().Set("Content-Type", "application/json")
-	respWriter.Write(dat)
+	respondWithJSON(respWriter, 201, ourUser)
 	return
 }
 
@@ -101,14 +97,14 @@ func (cfg *apiConfig) hitCounter(respWriter http.ResponseWriter, req *http.Reque
 func (cfg *apiConfig) resetCounter(respWriter http.ResponseWriter, req *http.Request) {
 	// Check platform
 	if cfg.platform != "dev" {
-		respWriter.WriteHeader(403)
+		respondWithError(respWriter, 403, "platform not authenticated")
 		return
 	}
 	// Delete all users in the database
 	ctx := context.Background()
 	err := cfg.dbQuerries.DeleteAllUsers(ctx)
 	if err != nil {
-		respWriter.WriteHeader(500)
+		respondWithError(respWriter, 500, "error making change")
 		return
 	}
 
@@ -146,17 +142,9 @@ func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Req
 
 // Handler to encode JSON response
 func validateChirpLength(w http.ResponseWriter, r *http.Request) {
+	// Request parameters
 	type parameters struct {
 		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
-		return
 	}
 
 	// type returnValue struct {
@@ -167,30 +155,32 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 		CleanedBody string `json:"cleaned_body"`
 		Error       string `json:"error"`
 	}
+	defer r.Body.Close()
 
-	returnVal := returnValue{}
-
-	if len(params.Body) > 120 {
-		errorMessage := "Chirp is too long"
-		returnVal.Error = errorMessage
-		dat, err := json.Marshal(returnVal)
-		if err != nil {
-			w.WriteHeader(500)
-		}
-		w.WriteHeader(400)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(dat)
+	// Read in data
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, 500, "couldn't read request")
 		return
 	}
-	// returnVal.Valid = true
-	returnVal.CleanedBody = cleanWords(params.Body)
-	dat, err := json.Marshal(returnVal)
+	// Now get the data
+	params := parameters{}
+	err = json.Unmarshal(data, &params)
 	if err != nil {
-		w.WriteHeader(500)
+		respondWithError(w, 500, "couldn't unmarshal parameters")
+		return
 	}
-	w.WriteHeader(200)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(dat)
+	if len(params.Body) > 120 {
+		errorMessage := "Chirp is too long"
+		respondWithError(w, 400, errorMessage)
+		return
+	}
+
+	newBodyResponse := returnValue{
+		CleanedBody: cleanWords(params.Body),
+	}
+
+	respondWithJSON(w, 200, newBodyResponse)
 	return
 
 }
@@ -211,4 +201,21 @@ func cleanWords(input string) string {
 
 	}
 	return strings.Join(cleanedInput, " ")
+}
+
+// Helper funcs
+func respondWithJSON(respWriter http.ResponseWriter, code int, payload interface{}) error {
+	response, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	respWriter.Header().Set("Content-Type", "application/json")
+	respWriter.Header().Set("Access-Control-Allow-Origin", "*")
+	respWriter.WriteHeader(code)
+	respWriter.Write(response)
+	return nil
+}
+
+func respondWithError(respWriter http.ResponseWriter, code int, msg string) error {
+	return respondWithJSON(respWriter, code, map[string]string{"error": msg})
 }
