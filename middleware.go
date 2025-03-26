@@ -3,12 +3,16 @@ package main
 import (
 	"net/http"
 	"sync/atomic"
+
+	"github.com/avgra3/chirpy/internal/database"
 )
 
 // Types
 type apiConfig struct {
 	// Allows us to safely increment an integer across goroutines
 	fileserverHits atomic.Int32
+	// For connecting to our database
+	dbQuerries *database.Queries
 }
 
 // Middleware

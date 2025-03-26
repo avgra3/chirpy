@@ -1,5 +1,10 @@
 # Exclude the build
 bin/*
+chirpy
 
 # Exclude test http requests
 httpRequests/*
+
+# Environment files
+.env
+
