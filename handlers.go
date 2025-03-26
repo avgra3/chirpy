@@ -53,7 +53,8 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 	newUser, err := cfg.dbQuerries.CreateUser(ctx, params.Email)
 	if err != nil {
 		respWriter.WriteHeader(500)
-		log.Printf("Error: %v\n", err)
+		message := fmt.Sprintf("Error: %v\n", err)
+		respondWithError(respWriter, 500, message)
 		return
 	}
 	ourUser := User{
@@ -73,24 +74,14 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 // Later the endpoint can be enhanced to return 403 Service Unavailable status code
 // if the server is not ready
 func readiness(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	respWriter.Write([]byte("OK"))
+	respondWithText(respWriter, 200, []byte("OK"))
 }
 
 // Want a handler that writes the number of requests that have been counted as plain text in this format to the HTTP response:
 // Hits: x
 func (cfg *apiConfig) hitCounter(respWriter http.ResponseWriter, req *http.Request) {
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
 	hitCounter := fmt.Sprintf("Hits: %v", cfg.fileserverHits.Load())
-	respWriter.Write([]byte(hitCounter))
+	respondWithText(respWriter, 200, []byte(hitCounter))
 }
 
 // Want a handler to reset the counter
@@ -107,37 +98,26 @@ func (cfg *apiConfig) resetCounter(respWriter http.ResponseWriter, req *http.Req
 		respondWithError(respWriter, 500, "error making change")
 		return
 	}
-
-	// Set content-type
-	req.Header.Add("Content-Type", "text/plain; charset=utf-8")
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
 	hitCounterBefore := fmt.Sprintf("Hits (before reset): %v", cfg.fileserverHits.Load())
 	// Resets back to zero
 	cfg.fileserverHits.Store(0)
-	hitCounterAfter := fmt.Sprintf("Hits (before reset): %v", cfg.fileserverHits.Load())
+	hitCounterAfter := fmt.Sprintf("Hits (after reset): %v", cfg.fileserverHits.Load())
 	hitCounter := hitCounterBefore + "\n" + hitCounterAfter
-	respWriter.Write([]byte(hitCounter))
+	// respWriter.Write([]byte(hitCounter))
+	respondWithText(respWriter, 200, []byte(hitCounter))
 }
 
 // Want a handler to get the admin page
 func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Request) {
 	// Set content-type
-	req.Header.Add("Content-Type", "text/html")
 	// Set the body
 	file, err := os.ReadFile("./admin/metrics.html")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fileString := string(file)
-	//cfg.fileserverHits.Load()
 	updatedFileString := fmt.Sprintf(fileString, cfg.fileserverHits.Load())
-	// req.Body.Read([]byte(updatedFileString))
-	// Write status code
-	respWriter.WriteHeader(200)
-	// Write the body
-	respWriter.Write([]byte(updatedFileString))
+	respondWithHTML(respWriter, 200, []byte(updatedFileString))
 }
 
 // Handler to encode JSON response
@@ -203,7 +183,6 @@ func cleanWords(input string) string {
 	return strings.Join(cleanedInput, " ")
 }
 
-// Helper funcs
 func respondWithJSON(respWriter http.ResponseWriter, code int, payload interface{}) error {
 	response, err := json.Marshal(payload)
 	if err != nil {
@@ -218,4 +197,20 @@ func respondWithJSON(respWriter http.ResponseWriter, code int, payload interface
 
 func respondWithError(respWriter http.ResponseWriter, code int, msg string) error {
 	return respondWithJSON(respWriter, code, map[string]string{"error": msg})
+}
+
+func respondWithText(respWriter http.ResponseWriter, code int, payload []byte) error {
+	respWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	respWriter.Header().Set("Access-Control-Allow-Origin", "*")
+	respWriter.WriteHeader(code)
+	respWriter.Write(payload)
+	return nil
+}
+
+func respondWithHTML(respWriter http.ResponseWriter, code int, payload []byte) error {
+	respWriter.Header().Set("Content-Type", "text/html")
+	respWriter.Header().Set("Access-Control-Allow-Origin", "*")
+	respWriter.WriteHeader(code)
+	respWriter.Write(payload)
+	return nil
 }
