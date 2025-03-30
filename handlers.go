@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/avgra3/chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 // Handlers
@@ -52,7 +55,6 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 	ctx := context.Background()
 	newUser, err := cfg.dbQuerries.CreateUser(ctx, params.Email)
 	if err != nil {
-		respWriter.WriteHeader(500)
 		message := fmt.Sprintf("Error: %v\n", err)
 		respondWithError(respWriter, 500, message)
 		return
@@ -121,6 +123,67 @@ func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Req
 }
 
 // Handler to encode JSON response
+func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
+	// Request parameters
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserId uuid.UUID `json:"user_id"`
+	}
+
+	defer r.Body.Close()
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, 500, "couldn't read request")
+		return
+	}
+	params := parameters{}
+	err = json.Unmarshal(data, &params)
+	if err != nil {
+		respondWithError(w, 500, "couldn't unmarshal parameters")
+		return
+	}
+	if len(params.Body) > 120 {
+		errorMessage := "Chirp is too long"
+		respondWithError(w, 400, errorMessage)
+		return
+	}
+	// respondWithJson
+	// type returnValue struct {
+	// 	CleanedBody string `json:"cleaned_body"`
+	// 	Error       string `json:"error,omitempty"`
+	// }
+	//
+	// newBodyResponse := returnValue{
+	// 	CleanedBody: cleanWords(params.Body),
+	// }
+	//
+	// respondWithJSON(w, 200, newBodyResponse)
+	// type chirp struct {
+	// 	Body   string
+	// 	UserID uuid.UUID
+	// }
+	validChirp := database.PostChirpParams{
+		Body:   cleanWords(params.Body),
+		UserID: params.UserId,
+	}
+	ctx := context.Background()
+	newChirp, err := cfg.dbQuerries.PostChirp(ctx, validChirp)
+	if err != nil {
+		errMessage := fmt.Sprintf("ERROR: %v", err)
+		respondWithError(w, 500, errMessage)
+	}
+	actualChirp := Chirp{
+		ID:        newChirp.UserID,
+		CreatedAt: newChirp.CreatedAt,
+		UpdatedAt: newChirp.UpdatedAt,
+		Body:      newChirp.Body,
+		UserID:    newChirp.UserID,
+	}
+
+	respondWithJSON(w, 201, actualChirp)
+	return
+}
+
 func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 	// Request parameters
 	type parameters struct {
@@ -133,7 +196,7 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 	// }
 	type returnValue struct {
 		CleanedBody string `json:"cleaned_body"`
-		Error       string `json:"error"`
+		Error       string `json:"error,omitempty"`
 	}
 	defer r.Body.Close()
 

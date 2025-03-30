@@ -43,8 +43,9 @@ func main() {
 	// Handle hits to the file server
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.adminHandler)
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetCounter)
-	serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
+	// serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
 	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandler)
+	serverMux.HandleFunc("POST /api/chirps", apiCfg.newChirps)
 
 	server := http.Server{
 		Handler: serverMux,
@@ -52,7 +53,6 @@ func main() {
 	}
 	log.Printf("Running server on port: %v", server.Addr)
 	server.ListenAndServe()
-
 }
 
 type User struct {
@@ -60,4 +60,12 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+}
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
 }
