@@ -4,7 +4,7 @@ set -e -x
 
 # First we want to run our tests
 echo "Testing..."
-go test -v
+go test -v ./...
 
 # Builds the server
 echo "Building server..."

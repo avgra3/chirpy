@@ -10,19 +10,55 @@ import (
 	"os"
 	"strings"
 
+	auth "github.com/avgra3/chirpy/internal/auth"
 	"github.com/avgra3/chirpy/internal/database"
 	"github.com/google/uuid"
 )
 
 // Handlers
 // Adding a new user
+func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Request) {
+	type parameters struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+	defer req.Body.Close()
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't read request")
+		return
+	}
+	userByEmail := parameters{}
+	err = json.Unmarshal(data, &userByEmail)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't unmarshal parameters")
+		return
+	}
+	ctx := context.Background()
+	user, err := cfg.dbQuerries.UserLogin(ctx, userByEmail.Email)
+	if err != nil {
+		respondWithError(respWriter, 401, "Incorrect email or password")
+		return
+	}
+	err = auth.CheckPasswordHash(user.HashedPassword, userByEmail.Password)
+	if err != nil {
+		respondWithError(respWriter, 401, "Incorrect email or password")
+		return
+	}
+
+	respondWithJSON(respWriter, 200, user)
+	return
+
+}
+
 func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.Request) {
 	// Takes in JSON request like:
 	// {
 	//   "email": "user@example.com"
 	// }
 	type parameters struct {
-		Email string `json:"email"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	defer req.Body.Close()
@@ -42,6 +78,10 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		respondWithError(respWriter, 400, "entered email was invalid (empty string)")
 		return
 	}
+	if strings.Trim(params.Password, " ") == "" {
+		respondWithError(respWriter, 400, "entered password was invalid (empty string)")
+		return
+	}
 
 	// Responds with HTTP 201 Created
 	// {
@@ -52,18 +92,33 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 	// }
 
 	// Need to actually make the user:
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(respWriter, 500, "unable to hash password")
+		return
+	}
+	paramsHashed := database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	}
 	ctx := context.Background()
-	newUser, err := cfg.dbQuerries.CreateUser(ctx, params.Email)
+	newUser, err := cfg.dbQuerries.CreateUser(ctx, paramsHashed)
 	if err != nil {
 		message := fmt.Sprintf("Error: %v\n", err)
 		respondWithError(respWriter, 500, message)
 		return
 	}
+	hashedPasword, err := auth.HashPassword(newUser.HashedPassword)
+	if err != nil {
+		message := fmt.Sprintf("Error hashing password")
+		respondWithError(respWriter, 500, message)
+	}
 	ourUser := User{
-		ID:        newUser.ID,
-		CreatedAt: newUser.CreatedAt,
-		UpdatedAt: newUser.UpdatedAt,
-		Email:     newUser.Email,
+		ID:             newUser.ID,
+		CreatedAt:      newUser.CreatedAt,
+		UpdatedAt:      newUser.UpdatedAt,
+		Email:          newUser.Email,
+		HashedPassword: hashedPasword,
 	}
 	respondWithJSON(respWriter, 201, ourUser)
 	return

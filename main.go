@@ -44,6 +44,7 @@ func main() {
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.adminHandler)
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetCounter)
 	// serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
+	serverMux.HandleFunc("POST /api/login", apiCfg.userLogin)
 	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandler)
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.newChirps)
 	serverMux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
@@ -58,10 +59,11 @@ func main() {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID             uuid.UUID `json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	Email          string    `json:"email"`
+	HashedPassword string    `json:"hashed_password"`
 }
 
 type Chirp struct {
