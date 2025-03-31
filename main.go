@@ -46,6 +46,8 @@ func main() {
 	// serverMux.HandleFunc("POST /api/validate_chirp", validateChirpLength)
 	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandler)
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.newChirps)
+	serverMux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
+	serverMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirp)
 
 	server := http.Server{
 		Handler: serverMux,

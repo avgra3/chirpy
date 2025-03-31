@@ -123,6 +123,36 @@ func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Req
 }
 
 // Handler to encode JSON response
+func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	chirps, err := cfg.dbQuerries.GetChirps(ctx)
+	if err != nil {
+		errMessage := fmt.Sprintf("ERROR: %v", err)
+		respondWithError(w, 500, errMessage)
+	}
+
+	respondWithJSON(w, 200, chirps)
+	return
+}
+
+func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	userID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		errMessage := fmt.Sprintf("ERROR: %v", err)
+		respondWithError(w, 500, errMessage)
+
+	}
+	chirps, err := cfg.dbQuerries.GetChirp(ctx, userID)
+	if err != nil {
+		errMessage := fmt.Sprintf("ERROR: %v", err)
+		respondWithError(w, 404, errMessage)
+	}
+
+	respondWithJSON(w, 200, chirps)
+	return
+}
+
 func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 	// Request parameters
 	type parameters struct {
