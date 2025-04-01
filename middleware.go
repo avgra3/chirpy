@@ -15,6 +15,8 @@ type apiConfig struct {
 	dbQuerries *database.Queries
 	// Platform
 	platform string
+	// JWT Secret
+	jwtSecret string
 }
 
 // Middleware

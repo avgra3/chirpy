@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	auth "github.com/avgra3/chirpy/internal/auth"
 	"github.com/avgra3/chirpy/internal/database"
@@ -19,8 +20,9 @@ import (
 // Adding a new user
 func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Request) {
 	type parameters struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		ExpiresInSeconds int    `json:"expires_in_secods"`
 	}
 	defer req.Body.Close()
 	data, err := io.ReadAll(req.Body)
@@ -34,6 +36,12 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 		respondWithError(respWriter, 500, "couldn't unmarshal parameters")
 		return
 	}
+	if userByEmail.ExpiresInSeconds <= 0 || userByEmail.ExpiresInSeconds > 60*60 {
+		// If not provided or greater than 1 hour, will default to 1 hour, in seconds
+		userByEmail.ExpiresInSeconds = 60 * 60
+	}
+	jwtDuration := time.Duration(userByEmail.ExpiresInSeconds) * time.Second
+
 	ctx := context.Background()
 	user, err := cfg.dbQuerries.UserLogin(ctx, userByEmail.Email)
 	if err != nil {
@@ -45,17 +53,26 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 		respondWithError(respWriter, 401, "Incorrect email or password")
 		return
 	}
+	// Once we are sure the user can log in, we create the JWT
+	jwt, err := auth.MakeJWT(user.ID, cfg.jwtSecret, jwtDuration)
+	if err != nil {
+		respondWithError(respWriter, 500, "Unable to create token at this time")
+	}
 
-	respondWithJSON(respWriter, 200, user)
+	authUser := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+		Token:     jwt,
+	}
+
+	respondWithJSON(respWriter, 200, authUser)
 	return
 
 }
 
 func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.Request) {
-	// Takes in JSON request like:
-	// {
-	//   "email": "user@example.com"
-	// }
 	type parameters struct {
 		Password string `json:"password"`
 		Email    string `json:"email"`
@@ -82,14 +99,6 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		respondWithError(respWriter, 400, "entered password was invalid (empty string)")
 		return
 	}
-
-	// Responds with HTTP 201 Created
-	// {
-	//   "id": "50746277-23c6-4d85-a890-564c0044c2fb",
-	//   "created_at": "2021-07-07T00:00:00Z",
-	//   "updated_at": "2021-07-07T00:00:00Z",
-	//   "email": "user@example.com"
-	// }
 
 	// Need to actually make the user:
 	hashedPassword, err := auth.HashPassword(params.Password)
@@ -160,7 +169,6 @@ func (cfg *apiConfig) resetCounter(respWriter http.ResponseWriter, req *http.Req
 	cfg.fileserverHits.Store(0)
 	hitCounterAfter := fmt.Sprintf("Hits (after reset): %v", cfg.fileserverHits.Load())
 	hitCounter := hitCounterBefore + "\n" + hitCounterAfter
-	// respWriter.Write([]byte(hitCounter))
 	respondWithText(respWriter, 200, []byte(hitCounter))
 }
 
@@ -213,6 +221,7 @@ func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Body   string    `json:"body"`
 		UserId uuid.UUID `json:"user_id"`
+		Token  string    `json:"token"`
 	}
 
 	defer r.Body.Close()
@@ -232,24 +241,22 @@ func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 400, errorMessage)
 		return
 	}
-	// respondWithJson
-	// type returnValue struct {
-	// 	CleanedBody string `json:"cleaned_body"`
-	// 	Error       string `json:"error,omitempty"`
-	// }
-	//
-	// newBodyResponse := returnValue{
-	// 	CleanedBody: cleanWords(params.Body),
-	// }
-	//
-	// respondWithJSON(w, 200, newBodyResponse)
-	// type chirp struct {
-	// 	Body   string
-	// 	UserID uuid.UUID
-	// }
+	// Check valid token
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Error: %v", err)
+		respondWithError(w, 401, errorMessage)
+	}
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		errorMessage := fmt.Sprintf("ERROR: %v\n", err)
+		respondWithError(w, 401, errorMessage)
+		return
+	}
+
 	validChirp := database.PostChirpParams{
 		Body:   cleanWords(params.Body),
-		UserID: params.UserId,
+		UserID: userID,
 	}
 	ctx := context.Background()
 	newChirp, err := cfg.dbQuerries.PostChirp(ctx, validChirp)
@@ -275,10 +282,6 @@ func validateChirpLength(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 
-	// type returnValue struct {
-	// 	Valid bool   `json:"valid"`
-	// 	Error string `json:"error"`
-	// }
 	type returnValue struct {
 		CleanedBody string `json:"cleaned_body"`
 		Error       string `json:"error,omitempty"`

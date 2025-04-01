@@ -19,6 +19,7 @@ func main() {
 	godotenv.Load()
 	currentPlatform := os.Getenv("PLATFORM")
 	dbURL := os.Getenv("DB_URL")
+	jwtSecret := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal(err)
@@ -36,6 +37,7 @@ func main() {
 	apiCfg := apiConfig{
 		dbQuerries: dbQuerries,
 		platform:   currentPlatform,
+		jwtSecret:  jwtSecret,
 	}
 	app := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInt(app))
@@ -63,7 +65,8 @@ type User struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	Email          string    `json:"email"`
-	HashedPassword string    `json:"hashed_password"`
+	HashedPassword string    `json:"hashed_password,omitempty"`
+	Token          string    `json:"token"`
 }
 
 type Chirp struct {
