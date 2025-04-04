@@ -57,6 +57,7 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 	jwt, err := auth.MakeJWT(user.ID, cfg.jwtSecret, jwtDuration)
 	if err != nil {
 		respondWithError(respWriter, 500, "Unable to create token at this time")
+		return
 	}
 
 	refreshToken, _ := auth.MakeRefreshToken()
@@ -116,7 +117,6 @@ func (cfg *apiConfig) refreshToken(respWriter http.ResponseWriter, req *http.Req
 		Token string `json:"token"`
 	}
 	respondWithJSON(respWriter, 200, responseValue{Token: newToken})
-
 }
 
 func (cfg *apiConfig) updateEmailPassword(respWriter http.ResponseWriter, req *http.Request) {
@@ -241,6 +241,7 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 	if err != nil {
 		message := fmt.Sprintf("Error hashing password")
 		respondWithError(respWriter, 500, message)
+		return
 	}
 	// Need to get a JWT
 	// Need to get refresh token
@@ -323,13 +324,18 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	userID, err := uuid.Parse(r.PathValue("chirpID"))
+	chirpIDStr := r.PathValue("chirpID")
+	if chirpIDStr == "" {
+		respondWithError(w, 400, "Missing chirp ID")
+		return
+	}
+	chirpID, err := uuid.Parse(chirpIDStr)
 	if err != nil {
 		errMessage := fmt.Sprintf("ERROR: %v", err)
 		respondWithError(w, 500, errMessage)
 
 	}
-	chirps, err := cfg.dbQuerries.GetChirp(ctx, userID)
+	chirps, err := cfg.dbQuerries.GetChirpByChirpID(ctx, chirpID)
 	if err != nil {
 		errMessage := fmt.Sprintf("ERROR: %v", err)
 		respondWithError(w, 404, errMessage)
@@ -337,6 +343,76 @@ func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, 200, chirps)
 	return
+}
+
+func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	// Check token in header
+	log.Printf("HEADER: %v", r.Header)
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, "Bad access token")
+		return
+	}
+	// The user ID is giving the chirp ID
+	userID, err := auth.ValidateJWT(accessToken, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, 401, "Bad access token")
+		return
+	}
+	// Chirp ID to delete
+	chirpIDStr := r.PathValue("chirpID")
+	if chirpIDStr == "" {
+		respondWithError(w, 400, "Missing chirp id")
+		return
+	}
+	chirpID, err := uuid.Parse(chirpIDStr)
+	if err != nil {
+		respondWithError(w, 401, "Bad chirp ID")
+		return
+	}
+
+	// Only allow deletion if the user is the owner of the chirp
+	ctx := context.Background()
+	deleteChirpParams := database.DeleteChirpParams{ID: chirpID, UserID: userID}
+	affectedRows, err := cfg.dbQuerries.DeleteChirp(ctx, deleteChirpParams)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		respondWithError(w, 500, "Server error!")
+		return
+	}
+	// Check no rows affected
+	if affectedRows == 0 {
+		// Try to get the chirp, regardless of owner
+		chirp, err := cfg.dbQuerries.GetChirp(ctx, userID)
+		if err != nil || chirp == (database.Chirp{}) {
+			respondWithError(w, 403, "Chirp not found")
+		} else if chirp.UserID != userID {
+			respondWithError(w, 403, "You don't own this chirp!")
+
+		} else {
+			// log.Printf("ERROR: chirp.ID => %v", chirp.ID)
+			// log.Printf("ERROR: chirp.UserID => %v", chirp.UserID)
+			// log.Printf("ERROR: chirp id we have => %v", chirpID)
+			// log.Printf("ERROR: user id we have => %v", userID)
+			// log.Printf("ERROR: chirp.ID == chirpID: %v", chirp.ID == chirpID)
+			// log.Printf("ERROR: chirp.UserID == userID: %v", chirp.UserID == userID)
+			// log.Printf("ERROR: len(chirp.ID) = %v", len(chirp.UserID))
+			// log.Printf("ERROR: len(userID) = %v", len(userID))
+			// log.Printf("ERROR: chirpIDStr value = %v", chirpIDStr)
+			// log.Printf("ERROR: Requested Path: %s", r.URL.Path)
+			// log.Printf("ERROR: Requested Raw Path: %s", r.URL.RawPath)
+			//
+			// log.Printf("ERROR: %v", err)
+			respondWithError(w, 403, "We dont know what the error is!")
+		}
+		return
+	}
+
+	message := fmt.Sprintf("Successfully (hopefully) deleted CHIRP ID: %v \n", chirpID)
+	log.Println(message)
+
+	// We successfully deleted!
+	w.WriteHeader(204)
 }
 
 func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +450,6 @@ func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 	// The token we have is a refresh token -- we need to get the access token
 	// We have the userID, so we need to get the access token
 	userID, err := auth.ValidateJWT(refreshToken, cfg.jwtSecret)
-
 	if err != nil {
 		errorMessage := fmt.Sprintf("TOKEN: %v", refreshToken)
 		respondWithError(w, 401, errorMessage)
@@ -392,7 +467,7 @@ func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, errMessage)
 	}
 	actualChirp := Chirp{
-		ID:        newChirp.UserID,
+		ID:        newChirp.ID,
 		CreatedAt: newChirp.CreatedAt,
 		UpdatedAt: newChirp.UpdatedAt,
 		Body:      newChirp.Body,

@@ -3,7 +3,6 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -48,31 +47,35 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 }
 
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	// ParseWithClaims(tokenString string, claims Claims, keyFunc Keyfunc, options ...ParserOption) (*Token, error)
-	claim := jwt.RegisteredClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, &claim, func(token *jwt.Token) (interface{}, error) {
-		// Return the secret key used to validate the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validate the signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(tokenSecret), nil
 	})
+
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	claims, ok := token.Claims.(*jwt.RegisteredClaims)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("invalid token claims")
-	}
+	// Extract claims
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// Get user ID from claims
+		userIDstr, ok := claims["sub"].(string)
+		if !ok {
+			return uuid.Nil, fmt.Errorf("invalid user ID in token")
+		}
 
-	userIDString, err := claims.GetSubject()
-	if err != nil {
-		return uuid.Nil, err
-	}
-	userID, err := uuid.Parse(userIDString)
-	if err != nil {
-		return uuid.Nil, err
-	}
+		// Parse the user ID string to UUID
+		userID, err := uuid.Parse(userIDstr)
+		if err != nil {
+			return uuid.Nil, err
+		}
 
-	return userID, err
+		return userID, nil
+	}
+	return uuid.Nil, fmt.Errorf("invalid token")
 }
 
 func GetBearerToken(headers http.Header) (string, error) {
@@ -85,7 +88,5 @@ func GetBearerToken(headers http.Header) (string, error) {
 	}
 	tokenString := strings.Split(auths[0], " ")
 	getJWT := strings.Split(tokenString[1], " ")
-	log.Printf("TOKEN STRING: %v", tokenString)
-	log.Printf("getJWT: %v", getJWT[0])
 	return getJWT[0], nil
 }
