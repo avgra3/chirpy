@@ -56,6 +56,9 @@ func main() {
 	serverMux.HandleFunc("PUT /api/users", apiCfg.updateEmailPassword)
 	serverMux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
 
+	// Webhooks
+	serverMux.HandleFunc("POST /api/polka/webhooks", apiCfg.upgradeUserToRed)
+
 	server := http.Server{
 		Handler: serverMux,
 		Addr:    ":8080",
@@ -72,6 +75,7 @@ type User struct {
 	HashedPassword string    `json:"hashed_password,omitempty"`
 	Token          string    `json:"token"`
 	RefreshToken   string    `json:"refresh_token"`
+	IsChirpyRed    bool      `json:"is_chirpy_red"`
 }
 
 type Chirp struct {

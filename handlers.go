@@ -69,6 +69,7 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 		Email:        user.Email,
 		Token:        jwt,
 		RefreshToken: refreshToken,
+		IsChirpyRed:  user.IsChirpyRed.Bool,
 	}
 
 	// Makes new Refresh token in the database
@@ -252,6 +253,7 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		UpdatedAt:      newUser.UpdatedAt,
 		Email:          newUser.Email,
 		HashedPassword: hashedPasword,
+		IsChirpyRed:    newUser.IsChirpyRed.Bool,
 	}
 	respondWithJSON(respWriter, 201, ourUser)
 	return
@@ -413,6 +415,49 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 
 	// We successfully deleted!
 	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) upgradeUserToRed(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+	defer r.Body.Close()
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondWithError(w, 404, "Unable to read body")
+		return
+	}
+	params := parameters{}
+	err = json.Unmarshal(data, &params)
+	if err != nil {
+		respondWithError(w, 500, "couldn't unmarshal parameters")
+		return
+	}
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+	// Need to update user in the database
+	ctx := context.Background()
+	// Double check user exists
+	userCheck, err := cfg.dbQuerries.GetUserById(ctx, params.Data.UserID)
+	if userCheck.ID != params.Data.UserID {
+		respondWithError(w, 404, "User does not exist")
+	}
+
+	err = cfg.dbQuerries.UpgradeUserToChirpyRed(ctx, params.Data.UserID)
+	if err != nil {
+		respondWithError(w, 500, "Unable to complete upgrade")
+		return
+	}
+	// Should have been successful, return 204
+	w.WriteHeader(204)
+	return
+
 }
 
 func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
