@@ -53,6 +53,7 @@ func main() {
 	serverMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirp)
 	serverMux.HandleFunc("POST /api/refresh", apiCfg.refreshToken)
 	serverMux.HandleFunc("POST /api/revoke", apiCfg.revokeToken)
+	serverMux.HandleFunc("PUT /api/users", apiCfg.updateEmailPassword)
 
 	server := http.Server{
 		Handler: serverMux,

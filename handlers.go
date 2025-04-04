@@ -119,6 +119,60 @@ func (cfg *apiConfig) refreshToken(respWriter http.ResponseWriter, req *http.Req
 
 }
 
+func (cfg *apiConfig) updateEmailPassword(respWriter http.ResponseWriter, req *http.Request) {
+	// Expect header to contain an access token
+	accessToken, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		respondWithError(respWriter, 401, "Bad access token")
+		return
+	}
+	// Validate accessToken
+	userID, err := auth.ValidateJWT(accessToken, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(respWriter, 401, "Bad access token")
+		return
+	}
+
+	type emailPassRequestBody struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+	defer req.Body.Close()
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't read request")
+		return
+	}
+	params := emailPassRequestBody{}
+	err = json.Unmarshal(data, &params)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't unmarshal request body")
+		return
+	}
+	// Need to hash the password
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(respWriter, 500, "couldn't has password")
+		return
+	}
+	// Need to update the users table with new email and password
+	updates := database.UpdateUserEmailPasswordParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+		ID:             userID,
+	}
+	// Make the update
+	ctx := context.Background()
+	updatedUser, err := cfg.dbQuerries.UpdateUserEmailPassword(ctx, updates)
+	if err != nil {
+		respondWithError(respWriter, 500, "Unable to complete request")
+		return
+	}
+
+	respondWithJSON(respWriter, 200, updatedUser)
+
+}
+
 func (cfg *apiConfig) revokeToken(respWriter http.ResponseWriter, req *http.Request) {
 	// No body accepted
 	// Requires a refreshToken in header: "Athorization: Bearer <token>" fromat
