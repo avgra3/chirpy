@@ -20,9 +20,9 @@ import (
 // Adding a new user
 func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds int    `json:"expires_in_secods"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
+		//	ExpiresInSeconds int    `json:"expires_in_secods"`
 	}
 	defer req.Body.Close()
 	data, err := io.ReadAll(req.Body)
@@ -36,11 +36,10 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 		respondWithError(respWriter, 500, "couldn't unmarshal parameters")
 		return
 	}
-	if userByEmail.ExpiresInSeconds <= 0 || userByEmail.ExpiresInSeconds > 60*60 {
-		// If not provided or greater than 1 hour, will default to 1 hour, in seconds
-		userByEmail.ExpiresInSeconds = 60 * 60
-	}
-	jwtDuration := time.Duration(userByEmail.ExpiresInSeconds) * time.Second
+	// if userByEmail.ExpiresInSeconds <= 0 || userByEmail.ExpiresInSeconds > 60*60 {
+	// 	// If not provided or greater than 1 hour, will default to 1 hour, in seconds
+	// 	userByEmail.ExpiresInSeconds = 60 * 60
+	// }
 
 	ctx := context.Background()
 	user, err := cfg.dbQuerries.UserLogin(ctx, userByEmail.Email)
@@ -54,22 +53,89 @@ func (cfg *apiConfig) userLogin(respWriter http.ResponseWriter, req *http.Reques
 		return
 	}
 	// Once we are sure the user can log in, we create the JWT
+	jwtDuration := time.Duration(60*60) * time.Second
 	jwt, err := auth.MakeJWT(user.ID, cfg.jwtSecret, jwtDuration)
 	if err != nil {
 		respondWithError(respWriter, 500, "Unable to create token at this time")
 	}
 
+	refreshToken, _ := auth.MakeRefreshToken()
+
 	authUser := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     jwt,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        jwt,
+		RefreshToken: refreshToken,
+	}
+
+	// Makes new Refresh token in the database
+	ctx = context.Background()
+	_, err = cfg.dbQuerries.NewRereshToken(ctx, database.NewRereshTokenParams{Token: refreshToken, UserID: authUser.ID})
+	if err != nil {
+		respondWithError(respWriter, 401, "Unable to refresh token")
+		return
 	}
 
 	respondWithJSON(respWriter, 200, authUser)
 	return
 
+}
+
+func (cfg *apiConfig) refreshToken(respWriter http.ResponseWriter, req *http.Request) {
+	// Requires no body
+	// Requires header: "Authorization: Bearer <token>"
+	head := req.Header
+	refreshToken, err := auth.GetBearerToken(head)
+	// If token does not exists or expired in the DB:
+	//	Respond with 401
+	if err != nil {
+		respondWithError(respWriter, 401, "Does not exist")
+		return
+	}
+	ctx := context.Background()
+	// We have refresh token, we want to check if it is still valid
+	userByToken, err := cfg.dbQuerries.GetUserFromRefreshToken(ctx, refreshToken)
+	if err != nil {
+		respondWithError(respWriter, 401, "Does not exist")
+		return
+
+	}
+	// If the token has a revoked at date (meaning now invalid)
+	if userByToken.RevokedAt.Valid {
+		respondWithError(respWriter, 401, "Refresh token revoked")
+		return
+	}
+	// Make new token
+	jwtDuration, _ := time.ParseDuration("1h")
+	newToken, err := auth.MakeJWT(userByToken.UserID, cfg.jwtSecret, jwtDuration)
+
+	// We are good to go!
+	type responseValue struct {
+		Token string `json:"token"`
+	}
+	respondWithJSON(respWriter, 200, responseValue{Token: newToken})
+
+}
+
+func (cfg *apiConfig) revokeToken(respWriter http.ResponseWriter, req *http.Request) {
+	// No body accepted
+	// Requires a refreshToken in header: "Athorization: Bearer <token>" fromat
+	refreshToken, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		respondWithError(respWriter, 500, "Invalid header")
+		return
+	}
+	// Need to update revoked_at to the current timestamp (which also updates the updated_at field)
+	ctx := context.Background()
+	err = cfg.dbQuerries.RevokeRefreshToken(ctx, refreshToken)
+	if err != nil {
+		respondWithError(respWriter, 500, "An error occured")
+		return
+	}
+	// Respond with a 204 status code -- no body returned
+	respondWithJSON(respWriter, 204, "")
 }
 
 func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.Request) {
@@ -122,6 +188,9 @@ func (cfg *apiConfig) newUserHandler(respWriter http.ResponseWriter, req *http.R
 		message := fmt.Sprintf("Error hashing password")
 		respondWithError(respWriter, 500, message)
 	}
+	// Need to get a JWT
+	// Need to get refresh token
+
 	ourUser := User{
 		ID:             newUser.ID,
 		CreatedAt:      newUser.CreatedAt,
@@ -242,14 +311,18 @@ func (cfg *apiConfig) newChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Check valid token
-	token, err := auth.GetBearerToken(r.Header)
+	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Error: %v", err)
 		respondWithError(w, 401, errorMessage)
+		return
 	}
-	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	// The token we have is a refresh token -- we need to get the access token
+	// We have the userID, so we need to get the access token
+	userID, err := auth.ValidateJWT(refreshToken, cfg.jwtSecret)
+
 	if err != nil {
-		errorMessage := fmt.Sprintf("ERROR: %v\n", err)
+		errorMessage := fmt.Sprintf("TOKEN: %v", refreshToken)
 		respondWithError(w, 401, errorMessage)
 		return
 	}

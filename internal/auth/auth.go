@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -83,5 +84,8 @@ func GetBearerToken(headers http.Header) (string, error) {
 		return "", errors.New("Authorization header not found!")
 	}
 	tokenString := strings.Split(auths[0], " ")
-	return string(tokenString[1]), nil
+	getJWT := strings.Split(tokenString[1], " ")
+	log.Printf("TOKEN STRING: %v", tokenString)
+	log.Printf("getJWT: %v", getJWT[0])
+	return getJWT[0], nil
 }

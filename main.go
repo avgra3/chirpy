@@ -51,6 +51,8 @@ func main() {
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.newChirps)
 	serverMux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	serverMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirp)
+	serverMux.HandleFunc("POST /api/refresh", apiCfg.refreshToken)
+	serverMux.HandleFunc("POST /api/revoke", apiCfg.revokeToken)
 
 	server := http.Server{
 		Handler: serverMux,
@@ -67,6 +69,7 @@ type User struct {
 	Email          string    `json:"email"`
 	HashedPassword string    `json:"hashed_password,omitempty"`
 	Token          string    `json:"token"`
+	RefreshToken   string    `json:"refresh_token"`
 }
 
 type Chirp struct {
@@ -75,4 +78,13 @@ type Chirp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Body      string    `json:"body"`
 	UserID    uuid.UUID `json:"user_id"`
+}
+
+type RereshToken struct {
+	Token     string    `json:"token"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	UserID    uuid.UUID `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	RevokedAt time.Time `json:"revoked_at"`
 }
