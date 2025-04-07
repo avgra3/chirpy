@@ -17,6 +17,8 @@ type apiConfig struct {
 	platform string
 	// JWT Secret
 	jwtSecret string
+	// Polka API Key
+	polkaKey string
 }
 
 // Middleware

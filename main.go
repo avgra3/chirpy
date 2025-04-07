@@ -21,6 +21,7 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	jwtSecret := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbURL)
+	apiKey := os.Getenv("POLA_KEY")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,6 +39,7 @@ func main() {
 		dbQuerries: dbQuerries,
 		platform:   currentPlatform,
 		jwtSecret:  jwtSecret,
+		polkaKey:   apiKey,
 	}
 	app := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInt(app))

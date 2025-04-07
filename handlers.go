@@ -418,6 +418,12 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) upgradeUserToRed(w http.ResponseWriter, r *http.Request) {
+	_, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
 	type parameters struct {
 		Event string `json:"event"`
 		Data  struct {
