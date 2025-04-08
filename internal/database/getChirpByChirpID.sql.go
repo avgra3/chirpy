@@ -14,11 +14,11 @@ import (
 const getChirpByChirpID = `-- name: GetChirpByChirpID :one
 SELECT id, created_at, updated_at, body, user_id
 FROM chirps
-WHERE id = $1
+WHERE user_id = $1
 `
 
-func (q *Queries) GetChirpByChirpID(ctx context.Context, id uuid.UUID) (Chirp, error) {
-	row := q.db.QueryRowContext(ctx, getChirpByChirpID, id)
+func (q *Queries) GetChirpByChirpID(ctx context.Context, userID uuid.UUID) (Chirp, error) {
+	row := q.db.QueryRowContext(ctx, getChirpByChirpID, userID)
 	var i Chirp
 	err := row.Scan(
 		&i.ID,

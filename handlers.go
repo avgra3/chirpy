@@ -313,15 +313,32 @@ func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Req
 
 // Handler to encode JSON response
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
+	// See if the user wants to filter by user id
+	authorIDParam := r.URL.Query().Get("author_id")
 	ctx := context.Background()
-	chirps, err := cfg.dbQuerries.GetChirps(ctx)
+
+	if authorIDParam == "" {
+		chirps, err := cfg.dbQuerries.GetChirps(ctx)
+		if err != nil {
+			errMessage := fmt.Sprintf("ERROR: %v", err)
+			respondWithError(w, 500, errMessage)
+		}
+
+		respondWithJSON(w, 200, chirps)
+		return
+	}
+	authorUUID, err := uuid.Parse(authorIDParam)
 	if err != nil {
-		errMessage := fmt.Sprintf("ERROR: %v", err)
-		respondWithError(w, 500, errMessage)
+		respondWithError(w, 500, "Unable to parse author_id")
+		return
 	}
 
+	chirps, err := cfg.dbQuerries.GetChirpsByAuthorID(ctx, authorUUID)
+	if err != nil {
+		respondWithError(w, 500, "There was a problem trying to get chirps.")
+		return
+	}
 	respondWithJSON(w, 200, chirps)
-	return
 }
 
 func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {

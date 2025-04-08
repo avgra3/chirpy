@@ -1,4 +1,4 @@
 -- name: GetChirpByChirpID :one
 SELECT *
 FROM chirps
-WHERE id = $1;
+WHERE user_id = $1;
