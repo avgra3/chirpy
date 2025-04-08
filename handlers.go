@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -315,6 +316,8 @@ func (cfg *apiConfig) adminHandler(respWriter http.ResponseWriter, req *http.Req
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 	// See if the user wants to filter by user id
 	authorIDParam := r.URL.Query().Get("author_id")
+	sortParam := r.URL.Query().Get("sort")
+
 	ctx := context.Background()
 
 	if authorIDParam == "" {
@@ -322,10 +325,17 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			errMessage := fmt.Sprintf("ERROR: %v", err)
 			respondWithError(w, 500, errMessage)
+			return
 		}
-
-		respondWithJSON(w, 200, chirps)
-		return
+		if sortParam == "" || sortParam == "asc" {
+			respondWithJSON(w, 200, chirps)
+			return
+		}
+		if sortParam == "desc" {
+			sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.After(chirps[j].CreatedAt) })
+			respondWithJSON(w, 200, chirps)
+			return
+		}
 	}
 	authorUUID, err := uuid.Parse(authorIDParam)
 	if err != nil {
@@ -338,7 +348,14 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, "There was a problem trying to get chirps.")
 		return
 	}
-	respondWithJSON(w, 200, chirps)
+	if sortParam == "asc" || sortParam == "" {
+		respondWithJSON(w, 200, chirps)
+		return
+	}
+	if sortParam == "desc" {
+		sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.After(chirps[j].CreatedAt) })
+		return
+	}
 }
 
 func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
